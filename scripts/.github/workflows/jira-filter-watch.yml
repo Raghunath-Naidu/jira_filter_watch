@@ -1,0 +1,50 @@
+name: Jira Filter Watch (38843)
+
+on:
+  # Triggered externally by cron-job.org every 10 minutes via:
+  #   POST https://api.github.com/repos/<owner>/<repo>/dispatches
+  #   { "event_type": "jira-filter-watch" }
+  repository_dispatch:
+    types: [jira-filter-watch]
+  # Allows manual testing from the Actions tab
+  workflow_dispatch: {}
+
+# Prevent overlapping runs from racing on the state file
+concurrency:
+  group: jira-filter-watch
+  cancel-in-progress: false
+
+jobs:
+  check-filter:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run watcher
+        env:
+          JIRA_BASE_URL: https://axso-tim.atlassian.net
+          JIRA_FILTER_ID: "38843"
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL: ${{ secrets.JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL }}
+        run: python scripts/jira_filter_watch.py
+
+      - name: Commit updated state
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/notified_tickets.json
+          git diff --staged --quiet || git commit -m "Update notified tickets state [skip ci]"
+          git push
