@@ -31,13 +31,23 @@ TEAMS_WEBHOOK_URL = os.environ["JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL"]
 # and "Employee Mutation", in any status that isn't Done - broader than a
 # fixed status list so it doesn't miss tickets sitting in an unanticipated
 # status name (e.g. "To Do" vs "Open" vs "New").
-JIRA_JQL = os.environ.get(
-    "JIRA_JQL",
+#
+# Can be overridden via the JIRA_JQL env var (e.g. for manual testing with
+# statusCategory = Done from the Actions tab's "test_jql" input) - falls
+# back to the default below if unset OR blank.
+_DEFAULT_JQL = (
     'project = EM AND issuetype = Sub-task '
     'AND summary ~ "Process CMDP" AND summary ~ "Employee Mutation" '
-    "AND statusCategory = Done "
-    "ORDER BY created ASC",
+    "AND statusCategory != Done "
+    "ORDER BY created ASC"
 )
+JIRA_JQL = os.environ.get("JIRA_JQL") or _DEFAULT_JQL
+
+# When true (set via the Actions "dry_run" input), print matching tickets
+# instead of posting to Teams or updating the state file. Useful for
+# testing a JQL override (e.g. statusCategory = Done) without spamming the
+# channel or marking real tickets as "already notified".
+DRY_RUN = os.environ.get("DRY_RUN", "").lower() in ("1", "true", "yes")
 
 STATE_PATH = Path(__file__).resolve().parent.parent / "state" / "notified_tickets.json"
 
@@ -125,14 +135,22 @@ def post_to_teams(issue):
 # ---- Main -----------------------------------------------------------------
 
 def main():
-    notified = load_notified()
+    print(f"JQL: {JIRA_JQL}")
+    if DRY_RUN:
+        print("DRY RUN: will not post to Teams or update state file.")
+
     issues = fetch_filter_issues()
     current_keys = {issue["key"] for issue in issues}
+    print(f"{len(current_keys)} ticket(s) currently match: {sorted(current_keys)}")
 
+    if DRY_RUN:
+        return
+
+    notified = load_notified()
     new_issues = [issue for issue in issues if issue["key"] not in notified]
 
     if not new_issues:
-        print(f"No new tickets. {len(current_keys)} tickets currently match filter {JIRA_FILTER_ID}.")
+        print("No new tickets.")
         return
 
     print(f"Found {len(new_issues)} new ticket(s): {[i['key'] for i in new_issues]}")
