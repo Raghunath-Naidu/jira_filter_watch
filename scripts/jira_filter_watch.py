@@ -88,33 +88,23 @@ def post_to_teams(issue):
     issue_type = (fields.get("issuetype") or {}).get("name", "Issue")
     issue_url = f"{JIRA_BASE_URL}/browse/{key}"
 
-    card = {
-        "@type": "MessageCard",
-        "@context": "http://schema.org/extensions",
-        "themeColor": "0076D7",
-        "summary": f"New Jira ticket: {key}",
-        "title": f"🆕 New ticket: {key} — {summary}",
-        "sections": [
-            {
-                "facts": [
-                    {"name": "Type", "value": issue_type},
-                    {"name": "Status", "value": status},
-                    {"name": "Priority", "value": priority},
-                    {"name": "Assignee", "value": assignee},
-                ],
-                "markdown": True,
-            }
-        ],
-        "potentialAction": [
-            {
-                "@type": "OpenUri",
-                "name": "Open in Jira",
-                "targets": [{"os": "default", "uri": issue_url}],
-            }
-        ],
-    }
+    # Power Automate "Post to a channel when a webhook request is received"
+    # flows accept whatever schema was set on the manual trigger - the most
+    # common default is a simple {"text": "..."} body. If your flow was
+    # configured with a different schema, adjust this payload to match it
+    # (check the flow's trigger step in Power Automate for the expected
+    # JSON schema).
+    message = (
+        f"🆕 New ticket: {key} — {summary}\n\n"
+        f"Type: {issue_type}\n"
+        f"Status: {status}\n"
+        f"Priority: {priority}\n"
+        f"Assignee: {assignee}\n"
+        f"Link: {issue_url}"
+    )
+    payload = {"text": message}
 
-    resp = requests.post(TEAMS_WEBHOOK_URL, json=card, timeout=30)
+    resp = requests.post(TEAMS_WEBHOOK_URL, json=payload, timeout=30)
     resp.raise_for_status()
 
 
