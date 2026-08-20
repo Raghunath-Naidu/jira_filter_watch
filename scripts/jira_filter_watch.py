@@ -43,24 +43,32 @@ STATE_PATH = Path(__file__).resolve().parent.parent / "state" / "notified_ticket
 # ---- Jira -----------------------------------------------------------------
 
 def fetch_filter_issues():
-    """Fetch all issues currently matching the filter's JQL."""
+    """Fetch all issues currently matching the filter's JQL.
+
+    Uses the current Jira Cloud search endpoint (POST /rest/api/3/search/jql).
+    The older GET /rest/api/2/search endpoint was deprecated by Atlassian
+    and now returns 410 Gone, so we use the replacement here, which also
+    uses token-based (not offset-based) pagination.
+    """
     issues = []
-    start_at = 0
-    page_size = 50
+    next_page_token = None
     while True:
-        search_url = f"{JIRA_BASE_URL}/rest/api/2/search"
-        params = {
+        search_url = f"{JIRA_BASE_URL}/rest/api/3/search/jql"
+        body = {
             "jql": JIRA_JQL,
-            "startAt": start_at,
-            "maxResults": page_size,
-            "fields": "summary,status,priority,assignee,issuetype",
+            "maxResults": 50,
+            "fields": ["summary", "status", "priority", "assignee", "issuetype"],
         }
-        resp = requests.get(search_url, params=params, auth=(JIRA_EMAIL, JIRA_API_TOKEN), timeout=30)
+        if next_page_token:
+            body["nextPageToken"] = next_page_token
+
+        resp = requests.post(search_url, json=body, auth=(JIRA_EMAIL, JIRA_API_TOKEN), timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        issues.extend(data["issues"])
-        start_at += page_size
-        if start_at >= data["total"]:
+        issues.extend(data.get("issues", []))
+
+        next_page_token = data.get("nextPageToken")
+        if not next_page_token or data.get("isLast", True):
             break
 
     return issues
