@@ -6,8 +6,19 @@ on:
   #   { "event_type": "jira-filter-watch" }
   repository_dispatch:
     types: [jira-filter-watch]
-  # Allows manual testing from the Actions tab
-  workflow_dispatch: {}
+  # Allows manual testing from the Actions tab, optionally with a custom
+  # JQL override (leave blank to use the script's default JQL)
+  workflow_dispatch:
+    inputs:
+      test_jql:
+        description: "Optional JQL override for testing (leave blank for default)"
+        required: false
+        type: string
+      dry_run:
+        description: "Dry run: print matching tickets instead of posting to Teams / saving state"
+        required: false
+        type: boolean
+        default: false
 
 # Prevent overlapping runs from racing on the state file
 concurrency:
@@ -35,13 +46,15 @@ jobs:
         env:
           JIRA_BASE_URL: https://axso-tim.atlassian.net
           JIRA_FILTER_ID: "38843"
+          JIRA_JQL: ${{ inputs.test_jql }}
+          DRY_RUN: ${{ inputs.dry_run }}
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL: ${{ secrets.JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL }}
         run: python scripts/jira_filter_watch.py
 
       - name: Commit updated state
-        if: always()
+        if: always() && inputs.dry_run != true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
