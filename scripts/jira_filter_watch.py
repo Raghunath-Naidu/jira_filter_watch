@@ -35,7 +35,7 @@ JIRA_JQL = os.environ.get(
     "JIRA_JQL",
     'project = EM AND issuetype = Sub-task '
     'AND summary ~ "Process CMDP" AND summary ~ "Employee Mutation" '
-    "AND statusCategory != Done "
+    "AND statusCategory = Done "
     "ORDER BY created ASC",
 )
 
