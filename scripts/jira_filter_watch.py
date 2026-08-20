@@ -26,16 +26,17 @@ JIRA_API_TOKEN = os.environ["JIRA_API_TOKEN"]
 JIRA_FILTER_ID = os.environ.get("JIRA_FILTER_ID", "38843")
 TEAMS_WEBHOOK_URL = os.environ["JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL"]
 
-# Hardcoded from filter 38843's JQL (fetching the filter object via
-# /rest/api/2/filter/{id} was 404ing for this API token - likely a
-# permissions/scope difference from the browser session - so we search
-# with the JQL directly instead, which only needs standard issue-search
-# access).
+# JQL for the "Process CMDP (CMDS)" subtasks under the Employee Mutation
+# (EM) project. Matches subtasks whose summary mentions both "Process CMDP"
+# and "Employee Mutation", in any status that isn't Done - broader than a
+# fixed status list so it doesn't miss tickets sitting in an unanticipated
+# status name (e.g. "To Do" vs "Open" vs "New").
 JIRA_JQL = os.environ.get(
     "JIRA_JQL",
-    'project = 11708 AND status IN (Open, New, "In Progress", "Work in progress") '
-    'AND (component = "CMDP (CMDS)" OR summary ~ "Process CMDP (CMDS)") '
-    "ORDER BY component ASC",
+    'project = EM AND issuetype = Sub-task '
+    'AND summary ~ "Process CMDP" AND summary ~ "Employee Mutation" '
+    "AND statusCategory != Done "
+    "ORDER BY created ASC",
 )
 
 STATE_PATH = Path(__file__).resolve().parent.parent / "state" / "notified_tickets.json"
