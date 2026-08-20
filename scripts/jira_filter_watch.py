@@ -26,26 +26,31 @@ JIRA_API_TOKEN = os.environ["JIRA_API_TOKEN"]
 JIRA_FILTER_ID = os.environ.get("JIRA_FILTER_ID", "38843")
 TEAMS_WEBHOOK_URL = os.environ["JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL"]
 
+# Hardcoded from filter 38843's JQL (fetching the filter object via
+# /rest/api/2/filter/{id} was 404ing for this API token - likely a
+# permissions/scope difference from the browser session - so we search
+# with the JQL directly instead, which only needs standard issue-search
+# access).
+JIRA_JQL = os.environ.get(
+    "JIRA_JQL",
+    'project = 11708 AND status IN (Open, New, "In Progress", "Work in progress") '
+    'AND (component = "CMDP (CMDS)" OR summary ~ "Process CMDP (CMDS)") '
+    "ORDER BY component ASC",
+)
+
 STATE_PATH = Path(__file__).resolve().parent.parent / "state" / "notified_tickets.json"
 
 # ---- Jira -----------------------------------------------------------------
 
 def fetch_filter_issues():
-    """Fetch all issues currently matching the given Jira filter ID."""
-    # Resolve the filter's JQL first (filters can be edited over time,
-    # this keeps us in sync with whatever the filter currently means).
-    filter_url = f"{JIRA_BASE_URL}/rest/api/2/filter/{JIRA_FILTER_ID}"
-    resp = requests.get(filter_url, auth=(JIRA_EMAIL, JIRA_API_TOKEN), timeout=30)
-    resp.raise_for_status()
-    jql = resp.json()["jql"]
-
+    """Fetch all issues currently matching the filter's JQL."""
     issues = []
     start_at = 0
     page_size = 50
     while True:
         search_url = f"{JIRA_BASE_URL}/rest/api/2/search"
         params = {
-            "jql": jql,
+            "jql": JIRA_JQL,
             "startAt": start_at,
             "maxResults": page_size,
             "fields": "summary,status,priority,assignee,issuetype",
