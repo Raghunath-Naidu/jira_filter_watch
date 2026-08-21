@@ -112,21 +112,41 @@ def post_to_teams(issue):
     issue_type = (fields.get("issuetype") or {}).get("name", "Issue")
     issue_url = f"{JIRA_BASE_URL}/browse/{key}"
 
-    # Power Automate "Post to a channel when a webhook request is received"
-    # flows accept whatever schema was set on the manual trigger - the most
-    # common default is a simple {"text": "..."} body. If your flow was
-    # configured with a different schema, adjust this payload to match it
-    # (check the flow's trigger step in Power Automate for the expected
-    # JSON schema).
-    message = (
-        f"🆕 New ticket: {key} — {summary}\n\n"
-        f"Type: {issue_type}\n"
-        f"Status: {status}\n"
-        f"Priority: {priority}\n"
-        f"Assignee: {assignee}\n"
-        f"Link: {issue_url}"
-    )
-    payload = {"text": message}
+    # This Power Automate flow uses the "Post card in a chat or channel"
+    # action, which requires a full Adaptive Card JSON body (confirmed via
+    # the flow's InvalidBotAdaptiveCard error - it rejects plain {"text":...}
+    # payloads). See https://adaptivecards.io/explorer/ for the schema.
+    adaptive_card = {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.4",
+        "body": [
+            {
+                "type": "TextBlock",
+                "text": f"🆕 New ticket: {key} — {summary}",
+                "wrap": True,
+                "weight": "Bolder",
+                "size": "Medium",
+            },
+            {
+                "type": "FactSet",
+                "facts": [
+                    {"title": "Type", "value": issue_type},
+                    {"title": "Status", "value": status},
+                    {"title": "Priority", "value": priority},
+                    {"title": "Assignee", "value": assignee},
+                ],
+            },
+        ],
+        "actions": [
+            {
+                "type": "Action.OpenUrl",
+                "title": "Open in Jira",
+                "url": issue_url,
+            }
+        ],
+    }
+    payload = adaptive_card
 
     resp = requests.post(TEAMS_WEBHOOK_URL, json=payload, timeout=30)
     resp.raise_for_status()
