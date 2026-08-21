@@ -13,7 +13,9 @@ GitHub Actions workflow after each run.
 
 import json
 import os
+import smtplib
 import sys
+from email.mime.text import MIMEText
 from pathlib import Path
 
 import requests
@@ -25,6 +27,12 @@ JIRA_EMAIL = os.environ["JIRA_EMAIL"]
 JIRA_API_TOKEN = os.environ["JIRA_API_TOKEN"]
 JIRA_FILTER_ID = os.environ.get("JIRA_FILTER_ID", "38843")
 TEAMS_WEBHOOK_URL = os.environ["JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL"]
+
+# Email alert config - same Gmail SMTP approach as sla-watch. Sends only
+# after a successful Teams post (additional channel, not a failure fallback).
+GMAIL_SENDER_EMAIL = os.environ.get("GMAIL_SENDER_EMAIL")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
+ALERT_EMAIL_TO = os.environ.get("ALERT_EMAIL_TO", "Vanshika.Srivastava@axpo.com")
 
 # JQL for the "Process CMDP (CMDS)" subtasks under the Employee Mutation
 # (EM) project. Matches subtasks whose summary mentions both "Process CMDP"
@@ -152,6 +160,52 @@ def post_to_teams(issue):
     resp.raise_for_status()
 
 
+# ---- Email ------------------------------------------------------------
+
+def send_email_alert(issue):
+    """Send an email alert for this ticket via Gmail SMTP.
+
+    Only called after a successful Teams post (see main()) - this is an
+    additional notification channel, not a failure fallback. If email
+    sending fails, that failure is logged but does NOT affect whether the
+    ticket is marked as notified (Teams already succeeded).
+    """
+    if not GMAIL_SENDER_EMAIL or not GMAIL_APP_PASSWORD:
+        print(
+            f"Skipping email for {issue['key']}: GMAIL_SENDER_EMAIL / "
+            "GMAIL_APP_PASSWORD not configured.",
+            file=sys.stderr,
+        )
+        return
+
+    key = issue["key"]
+    fields = issue["fields"]
+    summary = fields.get("summary", "(no summary)")
+    status = fields.get("status", {}).get("name", "Unknown")
+    priority = (fields.get("priority") or {}).get("name", "None")
+    assignee = (fields.get("assignee") or {}).get("displayName", "Unassigned")
+    issue_type = (fields.get("issuetype") or {}).get("name", "Issue")
+    issue_url = f"{JIRA_BASE_URL}/browse/{key}"
+
+    body = (
+        f"New ticket: {key} — {summary}\n\n"
+        f"Type: {issue_type}\n"
+        f"Status: {status}\n"
+        f"Priority: {priority}\n"
+        f"Assignee: {assignee}\n\n"
+        f"Link: {issue_url}\n"
+    )
+
+    msg = MIMEText(body)
+    msg["Subject"] = f"[Jira Filter Watch] New ticket: {key}"
+    msg["From"] = GMAIL_SENDER_EMAIL
+    msg["To"] = ALERT_EMAIL_TO
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
+        server.login(GMAIL_SENDER_EMAIL, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_SENDER_EMAIL, [ALERT_EMAIL_TO], msg.as_string())
+
+
 # ---- Main -----------------------------------------------------------------
 
 def main():
@@ -184,6 +238,15 @@ def main():
             # Don't mark as notified if the Teams post failed - retry next run.
             failures.append((issue["key"], str(e)))
             print(f"Failed to notify {issue['key']}: {e}", file=sys.stderr)
+            continue
+
+        # Teams post succeeded - also send the email alert. Email failures
+        # are logged only; they don't affect the "notified" state, since
+        # Teams (the primary channel) already succeeded.
+        try:
+            send_email_alert(issue)
+        except Exception as e:
+            print(f"Teams succeeded but email failed for {issue['key']}: {e}", file=sys.stderr)
 
     save_notified(notified)
 
