@@ -51,6 +51,9 @@ jobs:
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL: ${{ secrets.JIRA_FILTER_WATCH_TEAMS_WEBHOOK_URL }}
+          GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ALERT_EMAIL_TO: Vanshika.Srivastava@axpo.com
         run: python scripts/jira_filter_watch.py
 
       - name: Commit updated state
