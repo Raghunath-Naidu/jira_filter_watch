@@ -35,17 +35,15 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 ALERT_EMAIL_TO = os.environ.get("ALERT_EMAIL_TO", "Vanshika.Srivastava@axpo.com")
 
 # JQL for the "Process CMDP (CMDS)" subtasks under the Employee Mutation
-# (EM) project. Matches subtasks whose summary mentions both "Process CMDP"
-# and "Employee Mutation", in any status that isn't Done - broader than a
-# fixed status list so it doesn't miss tickets sitting in an unanticipated
-# status name (e.g. "To Do" vs "Open" vs "New").
-#
-# Can be overridden via the JIRA_JQL env var (e.g. for manual testing with
-# statusCategory = Done from the Actions tab's "test_jql" input) - falls
-# back to the default below if unset OR blank.
+# (EM) project. Matches on "Process CMDP" alone - earlier tickets end their
+# summary with "Employee Mutation" but others use different suffixes (e.g.
+# "EM: Leave", "EM: Joiner"), so matching only on the consistent "Process
+# CMDP" prefix catches all of them. Any status that isn't Done - broader
+# than a fixed status list so it doesn't miss tickets sitting in an
+# unanticipated status name (e.g. "To Do" vs "Open" vs "New").
 _DEFAULT_JQL = (
     'project = EM AND issuetype = Sub-task '
-    'AND summary ~ "Process CMDP" AND summary ~ "Employee Mutation" '
+    'AND summary ~ "Process CMDP" '
     "AND statusCategory != Done "
     "ORDER BY created ASC"
 )
@@ -82,6 +80,11 @@ def fetch_filter_issues():
             body["nextPageToken"] = next_page_token
 
         resp = requests.post(search_url, json=body, auth=(JIRA_EMAIL, JIRA_API_TOKEN), timeout=30)
+        if not resp.ok:
+            # Jira puts the actual reason in the response body (e.g. bad
+            # JQL syntax) - print it before raising, since raise_for_status()
+            # alone only shows the status code, not why it failed.
+            print(f"Jira API error {resp.status_code}: {resp.text}", file=sys.stderr)
         resp.raise_for_status()
         data = resp.json()
         issues.extend(data.get("issues", []))
